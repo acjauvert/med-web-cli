@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery.terminal/js/jquery.terminal.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery.terminal/css/jquery.terminal.min.css"/>
+    <style>
+        body { margin: 0; height: 100vh; background: #000; }
+        /* Optimisation pour mobile */
+        .terminal { --size: 1.1; font-family: 'Courier New', monospace; }
+    </style>
+</head>
+<body>
+
+<script>
+// Fonction pour récupérer les données sauvegardées
+function getLogs() {
+    const data = localStorage.getItem('meds_logs');
+    return data ? JSON.parse(data) : [];
+}
+
+// Fonction pour sauvegarder une prise
+function saveLog(nom, dose) {
+    const logs = getLogs();
+    logs.push({
+        nom: nom,
+        dose: dose,
+        date: new Date().toLocaleString('fr-FR')
+    });
+    localStorage.setItem('meds_logs', JSON.stringify(logs));
+}
+
+$('body').terminal({
+    // Commande : add [nom] [dose]
+    add: function(nom, dose) {
+        if (!nom || !dose) {
+            this.error('Usage: add [nom] [dose]');
+            return;
+        }
+        saveLog(nom, dose);
+        this.echo('[[b;green;]OK :] ' + nom + ' enregistré.');
+    },
+
+    // Commande : list
+    list: function() {
+        const logs = getLogs();
+        if (logs.length === 0) {
+            this.echo('Aucun historique trouvé.');
+        } else {
+            logs.forEach(log => {
+                this.echo(`[[b;cyan;]${log.date}] - ${log.nom} (${log.dose})`);
+            });
+        }
+    },
+
+    // Commande : clear (efface l'écran)
+    clear: function() {
+        this.clear();
+    },
+
+    // Aide
+    help: function() {
+        this.echo('\nCommandes disponibles :');
+        this.echo('  [[b;white;]add <nom> <dose>] : Enregistrer une prise');
+        this.echo('  [[b;white;]list]           : Afficher l\'historique');
+        this.echo('  [[b;white;]clear]          : Effacer l\'écran\n');
+    }
+}, {
+    greetings: '💊 TERMINAL MÉDICAMENTS v1.0\nTapez "help" pour voir les commandes.',
+    prompt: 'user@meds> ',
+    checkArity: false
+});
+</script>
+</body>
+</html>
