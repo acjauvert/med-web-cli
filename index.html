@@ -1,0 +1,160 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meds CLI v 1.4-a</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery.terminal/js/jquery.terminal.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery.terminal/css/jquery.terminal.min.css"/>
+    <style>
+        body { margin: 0; height: 100vh; background-color: black; }
+        .terminal { --size: 1.2; }
+    </style>
+</head>
+<body>
+
+<script>
+const KEY_MAP = { 'meds': 'meds_logs', 'diabete': 'diabete_logs', 'gastro': 'gastro_logs' };
+function getStorageKey(alias) { return KEY_MAP[alias] || null; }
+const DIABETE_MAP = { 'rap': 'NOVORAPID', 'len': 'TRESIBA' };
+
+function saveEntry(storageKey, entry) {
+    const data = localStorage.getItem(storageKey);
+    const logs = data ? JSON.parse(data) : [];
+    logs.push(entry);
+    localStorage.setItem(storageKey, JSON.stringify(logs));
+}
+
+$('body').terminal({
+    // Utilisation de ...args pour accepter un nombre variable d'arguments (évite l'erreur Arity)
+add: function(...args) {
+        let entry = {
+            id: Math.random().toString(36).substr(2, 5),
+            date: new Date().toLocaleString('fr-FR'),
+            cat: 'autre', nom: '', dose: ''
+        };
+        let secondaryLog = null;
+
+        if (args[0] === '-e') {
+            if (!DIABETE_MAP[args[1]] || !args[2]) {
+                this.error('Usage: add -e <len|rap> <dose>');
+                return;
+            }
+            entry.nom = DIABETE_MAP[args[1]];
+            entry.dose = args[2] + " UI";
+            entry.cat = 'endoc';
+            secondaryLog = 'diabete_logs';
+        } 
+        else if (args[0] === '-g') {
+            if (!args[1] || !args[2]) {
+                this.error('Usage: add -g <nom> <dose>');
+                return;
+            }
+            entry.nom = args[1];
+            entry.dose = args[2];
+            entry.cat = 'gastr';
+            secondaryLog = 'gastro_logs';
+        } 
+        else {
+            if (!args[0] || !args[1]) {
+                this.error('Usage: add <nom> <dose>');
+                return;
+            }
+            entry.nom = args[0];
+            entry.dose = args[1];
+        }
+
+        saveEntry('meds_logs', entry);
+        if (secondaryLog) saveEntry(secondaryLog, entry);
+        
+        this.echo(`[[b;green;]OK :] ${entry.nom} enregistré.`);
+    },
+
+list: function(type) {
+        let key = 'meds_logs';
+        if (type === '-e') key = 'diabete_logs';
+        if (type === '-g') key = 'gastro_logs';
+        
+        const logs = JSON.parse(localStorage.getItem(key) || "[]");
+        if (logs.length === 0) return this.echo('Historique vide.');
+        
+        logs.forEach(l => this.echo(`[[b;cyan;]${l.date}] [${l.cat}] ${l.nom} : ${l.dose}`));
+    },
+
+
+
+//~ Réécriture de la fonction del
+    
+del: async function(...args) {
+    const params = {};
+    for (let i = 0; i < args.length; i++) {
+        // On force la conversion en string pour éviter l'erreur .startsWith
+        const arg = String(args[i]); 
+        if (arg.startsWith('-')) {
+            params[arg] = args[i + 1] !== undefined ? args[i + 1] : true;
+        }
+    }
+
+    const storageKey = getStorageKey(params['-from']);
+    if (!storageKey) {
+        return this.error('Usage: del -from <meds|diabete|gastro> [options]');
+    }
+
+    let logs = JSON.parse(localStorage.getItem(storageKey) || "[]");
+    const initialCount = logs.length;
+
+    // --- LOGIQUE DE SUPPRESSION ---
+    if (params['-all']) {
+        const confirm = await this.read('Voulez-vous vraiment TOUT supprimer ? (y/n) : ');
+        if (confirm.toLowerCase() === 'y') logs = [];
+        else return this.echo('Annulé.');
+    } 
+    else if (params['-id']) {
+        logs = logs.filter(l => l.id !== String(params['-id']));
+    } 
+    else if (params['-date']) {
+        logs = logs.filter(l => l.date !== String(params['-date']));
+    } 
+    else if (params['-last']) {
+        const n = parseInt(params['-last']) || 1;
+        logs.splice(-n);
+    } 
+    else if (params['-today'] || params['-day']) {
+        const dateToMatch = params['-today'] 
+            ? new Date().toLocaleDateString('fr-FR') 
+            : String(params['-day']);
+        logs = logs.filter(l => !l.date.startsWith(dateToMatch));
+    }
+
+    // Sauvegarde
+    localStorage.setItem(storageKey, JSON.stringify(logs));
+    const deleted = initialCount - logs.length;
+    this.echo(`[[b;orange;]Suppression terminée :] ${deleted} entrée(s) supprimée(s).`);
+},
+
+
+    man: function() {
+        this.echo("\n[[b;white;]MANUEL DES COMMANDES]");
+        this.echo("- [[b;yellow;]add <nom> <dose>] : Prise standard");
+        this.echo("- [[b;yellow;]add -e <len|rap> <dose>] : Insuline (Lente/Rapide)");
+        this.echo("- [[b;yellow;]add -g <nom> <dose>] : Gastro-entérologie");
+        this.echo("- [[b;yellow;]list [-e|-g]] : Affiche le journal choisi\n");
+        this.echo("- [[b;yellow;]del -from <journal> <option>] : Supprimer des entrées");
+		this.echo("  Options: -id ID, -date \"...\", -last n, -today, -day DD/MM/AAAA, -all");
+
+    },
+
+    help: function() {
+        this.echo('Commandes: [[b;white;]add], [[b;white;]list], [[b;white;]man], [[b;white;]clear]');
+    }
+}, {
+    greetings: '💊 TERMINAL MÉDICAMENTS v1.4-a\nTapez "man" pour les instructions.',
+    prompt: 'user@meds> ',
+    checkArity: false // Empêche l'erreur de nombre d'arguments
+});
+</script>
+</body>
+</html>
+
